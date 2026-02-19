@@ -1,0 +1,48 @@
+name: Check DNS from Issue
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  check-dns:
+    if: contains(github.event.issue.labels.*.name, 'dns-check')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      # Extract website from issue body
+      - name: Extract Website from Issue
+        id: extract
+        run: |
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          
+          # Extract first line or specific format
+          WEBSITE=$(echo "$ISSUE_BODY" | grep -oP '(?<=Website: )[^ ]+' | head -1)
+          
+          if [ -z "$WEBSITE" ]; then
+            WEBSITE=$(echo "$ISSUE_BODY" | head -1)
+          fi
+          
+          echo "website=$WEBSITE" >> $GITHUB_OUTPUT
+          echo "Extracted website: $WEBSITE"
+      
+      - name: DNS Lookup for ${{ steps.extract.outputs.website }}
+        id: nslookup
+        run: |
+          WEBSITE="${{ steps.extract.outputs.website }}"
+          IP=$(nslookup $WEBSITE | grep "Address:" | tail -1 | awk '{print $2}')
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+          echo "✅ Found IP: $IP"
+      
+      - name: Comment on Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🌍 DNS Lookup Results\n\n**Website:** ${{ steps.extract.outputs.website }}\n**IP Address:** ${{ steps.nslookup.outputs.ip }}\n**Time:** $(new Date().toLocaleString())\n\n✅ Check completed automatically!`
+            })
